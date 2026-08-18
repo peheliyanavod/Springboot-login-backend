@@ -11,7 +11,7 @@ import java.util.List;
 public class MessagesController {
     @GetMapping("/messages")
     public ResponseEntity<List<String>> messages(){
-        return ResponseEntity.ok(Arrays.asList("first", "second"));
+        return ResponseEntity.ok(Arrays.asList("first", "second", "third"));
     }
 
     @GetMapping("/test")
