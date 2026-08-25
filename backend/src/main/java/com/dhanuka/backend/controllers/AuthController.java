@@ -5,6 +5,7 @@ import com.dhanuka.backend.dtos.SignUpDto;
 import com.dhanuka.backend.dtos.UserDto;
 import com.dhanuka.backend.services.UserService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;

@@ -33,7 +33,7 @@ public class UserService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
 
-        if (!user.getPasswordHash().equals(credentialsDto.getPassword())) {
+        if (!org.mindrot.jbcrypt.BCrypt.checkpw(credentialsDto.getPassword(), user.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }
 
@@ -63,13 +63,31 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email is required");
         }
 
+        if (!email.matches("^[A-Za-z0-9+_.-]+@(.+)$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid email format");
+        }
+
         if (userRepository.existsByEmail(email)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email is already registered");
         }
 
+        String password = signUpDto.getPassword();
+        if (password == null || password.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password is required");
+        }
+
+        if (!password.matches("^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=!]).{8,15}$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password must be 8-15 characters long, and include at least one uppercase letter, one lowercase letter, one number, and one special character (@#$%^&+=!)");
+        }
+
+        String confirmPassword = signUpDto.getConfirmPassword();
+        if (confirmPassword == null || !confirmPassword.equals(password)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Passwords do not match");
+        }
+
         User user = User.builder()
                 .email(email)
-                .passwordHash(signUpDto.getPassword())
+                .passwordHash(org.mindrot.jbcrypt.BCrypt.hashpw(signUpDto.getPassword(), org.mindrot.jbcrypt.BCrypt.gensalt()))
                 .isEmailVerified(false)
                 .build();
 
