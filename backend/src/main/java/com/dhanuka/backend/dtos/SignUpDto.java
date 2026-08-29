@@ -15,6 +15,8 @@ public class SignUpDto {
     @JsonAlias({"email", "username", "login"})
     private String email;
 
+    private String name;
+
     private String password;
 
     private String confirmPassword;

@@ -66,6 +66,7 @@ public class UserService {
         return UserDto.builder()
                 .id(user.getId())
                 .email(user.getEmail())
+                .name(user.getName())
                 .isEmailVerified(user.isEmailVerified())
                 .token(refreshToken)
                 .userType(user.getUserType() != null ? user.getUserType().getType() : "Normal User")
@@ -78,6 +79,11 @@ public class UserService {
         String email = signUpDto.getEmail();
         if (email == null || email.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email is required");
+        }
+
+        String name = signUpDto.getName();
+        if (name == null || name.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Name is required");
         }
 
         if (!email.matches("^[A-Za-z0-9+_.-]+@(.+)$")) {
@@ -110,6 +116,7 @@ public class UserService {
 
         User user = User.builder()
                 .email(email)
+                .name(name)
                 .passwordHash(org.mindrot.jbcrypt.BCrypt.hashpw(signUpDto.getPassword(), org.mindrot.jbcrypt.BCrypt.gensalt()))
                 .isEmailVerified(false)
                 .userType(defaultType)
@@ -138,6 +145,7 @@ public class UserService {
         return UserDto.builder()
                 .id(savedUser.getId())
                 .email(savedUser.getEmail())
+                .name(savedUser.getName())
                 .isEmailVerified(savedUser.isEmailVerified())
                 .token(refreshToken)
                 .userType(savedUser.getUserType().getType())
@@ -151,6 +159,7 @@ public class UserService {
         return UserDto.builder()
                 .id(user.getId())
                 .email(user.getEmail())
+                .name(user.getName())
                 .isEmailVerified(user.isEmailVerified())
                 .build();
     }
@@ -168,6 +177,7 @@ public class UserService {
         return UserDto.builder()
                 .id(user.getId())
                 .email(user.getEmail())
+                .name(user.getName())
                 .isEmailVerified(user.isEmailVerified())
                 .token(token)
                 .userType(user.getUserType() != null ? user.getUserType().getType() : "Normal User")
@@ -241,6 +251,7 @@ public class UserService {
         return userRepository.findAll().stream().map(user -> UserDto.builder()
                 .id(user.getId())
                 .email(user.getEmail())
+                .name(user.getName())
                 .isEmailVerified(user.isEmailVerified())
                 .userType(user.getUserType() != null ? user.getUserType().getType() : "Unknown")
                 .status(user.getStatus())
@@ -266,6 +277,7 @@ public class UserService {
         return UserDto.builder()
                 .id(user.getId())
                 .email(user.getEmail())
+                .name(user.getName())
                 .isEmailVerified(user.isEmailVerified())
                 .userType(user.getUserType() != null ? user.getUserType().getType() : "Unknown")
                 .status(user.getStatus())
