@@ -30,6 +30,7 @@ public class UserService {
     private final PasswordResetRepository passwordResetRepository;
     private final EmailService emailService;
     private final UserTypeRepository userTypeRepository;
+    private final SystemLogService systemLogService;
 
     @org.springframework.beans.factory.annotation.Value("${app.frontend.url:http://localhost:4200}")
     private String frontendUrl;
@@ -62,6 +63,8 @@ public class UserService {
                 .isRevoked(false)
                 .build();
         sessionRepository.save(session);
+
+        systemLogService.saveLog(user, ipAddress, "User logged in successfully");
 
         return UserDto.builder()
                 .id(user.getId())
@@ -142,6 +145,8 @@ public class UserService {
 
         emailService.sendEmail(email, "Registration Successful!", emailContent);
 
+        systemLogService.saveLog(user, ipAddress, "User registered successfully");
+
         return UserDto.builder()
                 .id(savedUser.getId())
                 .email(savedUser.getEmail())
@@ -217,7 +222,7 @@ public class UserService {
     }
 
     @Transactional
-    public void resetPassword(String token, String email, String newPassword) {
+    public void resetPassword(String token, String email, String newPassword, String ipAddress) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         
@@ -245,6 +250,8 @@ public class UserService {
 
         validReset.setUsed(true);
         passwordResetRepository.save(validReset);
+
+        systemLogService.saveLog(user, ipAddress, "Password reset successful");
     }
 
     public List<UserDto> getAllUsers() {
@@ -259,7 +266,7 @@ public class UserService {
     }
 
     @Transactional
-    public UserDto updateUserStatus(Long userId, String status) {
+    public UserDto updateUserStatus(Long userId, String status, String ipAddress) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         
@@ -273,6 +280,9 @@ public class UserService {
         
         user.setStatus(status);
         userRepository.save(user);
+
+        String action = "Active".equalsIgnoreCase(status) ? "Activated" : "Deactivated";
+        systemLogService.saveLog(user, ipAddress, user.getName() + "'s user account " + action);
         
         return UserDto.builder()
                 .id(user.getId())

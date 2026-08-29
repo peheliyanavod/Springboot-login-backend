@@ -6,6 +6,7 @@ import com.dhanuka.backend.services.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.List;
 
@@ -24,7 +25,9 @@ public class AdminController {
     @PutMapping("/users/{id}/status")
     public ResponseEntity<UserDto> updateUserStatus(
             @PathVariable Long id,
-            @RequestBody UserStatusUpdateDto updateDto) {
-        return ResponseEntity.ok(userService.updateUserStatus(id, updateDto.getStatus()));
+            @RequestBody UserStatusUpdateDto updateDto,
+            HttpServletRequest request) {
+        String ipAddress = request.getRemoteAddr();
+        return ResponseEntity.ok(userService.updateUserStatus(id, updateDto.getStatus(), ipAddress));
     }
 }

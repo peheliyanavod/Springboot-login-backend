@@ -58,8 +58,9 @@ public class AuthController {
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<String> resetPassword(@RequestBody com.dhanuka.backend.dtos.ResetPasswordDto resetPasswordDto) {
-        userService.resetPassword(resetPasswordDto.getToken(), resetPasswordDto.getEmail(), resetPasswordDto.getNewPassword());
+    public ResponseEntity<String> resetPassword(@RequestBody com.dhanuka.backend.dtos.ResetPasswordDto resetPasswordDto, HttpServletRequest request) {
+        String ipAddress = request.getRemoteAddr();
+        userService.resetPassword(resetPasswordDto.getToken(), resetPasswordDto.getEmail(), resetPasswordDto.getNewPassword(), ipAddress);
         return ResponseEntity.ok("Password has been successfully reset.");
     }
 }
