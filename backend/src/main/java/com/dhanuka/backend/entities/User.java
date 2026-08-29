@@ -30,6 +30,14 @@ public class User {
     @Builder.Default
     private boolean isEmailVerified = false;
 
+    @ManyToOne
+    @JoinColumn(name = "user_type", nullable = false)
+    private UserType userType;
+
+    @Column(name = "status", nullable = false, columnDefinition = "enum('Active','Inactive')")
+    @Builder.Default
+    private String status = "Active";
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private LocalDateTime createdAt;
 

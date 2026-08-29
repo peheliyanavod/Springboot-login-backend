@@ -8,6 +8,8 @@ import com.dhanuka.backend.entities.User;
 import com.dhanuka.backend.repositories.PasswordResetRepository;
 import com.dhanuka.backend.repositories.SessionRepository;
 import com.dhanuka.backend.repositories.UserRepository;
+import com.dhanuka.backend.repositories.UserTypeRepository;
+import com.dhanuka.backend.entities.UserType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +29,7 @@ public class UserService {
     private final SessionRepository sessionRepository;
     private final PasswordResetRepository passwordResetRepository;
     private final EmailService emailService;
+    private final UserTypeRepository userTypeRepository;
 
     @org.springframework.beans.factory.annotation.Value("${app.frontend.url:http://localhost:4200}")
     private String frontendUrl;
@@ -38,6 +43,10 @@ public class UserService {
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
+
+        if ("Inactive".equalsIgnoreCase(user.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Your account is inactive. Please contact support.");
+        }
 
         if (!org.mindrot.jbcrypt.BCrypt.checkpw(credentialsDto.getPassword(), user.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
@@ -59,6 +68,8 @@ public class UserService {
                 .email(user.getEmail())
                 .isEmailVerified(user.isEmailVerified())
                 .token(refreshToken)
+                .userType(user.getUserType() != null ? user.getUserType().getType() : "Normal User")
+                .status(user.getStatus())
                 .build();
     }
 
@@ -91,10 +102,18 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Passwords do not match");
         }
 
+        UserType defaultType = userTypeRepository.findByType("Normal User").orElseGet(() -> {
+            UserType newType = new UserType();
+            newType.setType("Normal User");
+            return userTypeRepository.save(newType);
+        });
+
         User user = User.builder()
                 .email(email)
                 .passwordHash(org.mindrot.jbcrypt.BCrypt.hashpw(signUpDto.getPassword(), org.mindrot.jbcrypt.BCrypt.gensalt()))
                 .isEmailVerified(false)
+                .userType(defaultType)
+                .status("Active")
                 .build();
 
         User savedUser = userRepository.save(user);
@@ -121,6 +140,8 @@ public class UserService {
                 .email(savedUser.getEmail())
                 .isEmailVerified(savedUser.isEmailVerified())
                 .token(refreshToken)
+                .userType(savedUser.getUserType().getType())
+                .status(savedUser.getStatus())
                 .build();
     }
 
@@ -131,6 +152,26 @@ public class UserService {
                 .id(user.getId())
                 .email(user.getEmail())
                 .isEmailVerified(user.isEmailVerified())
+                .build();
+    }
+
+    public UserDto getUserByToken(String token) {
+        Session session = sessionRepository.findByRefreshToken(token)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid session"));
+        if (session.isRevoked() || session.getExpiredAt().isBefore(LocalDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Session expired or revoked");
+        }
+        User user = session.getUser();
+        if ("Inactive".equalsIgnoreCase(user.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Your account is inactive.");
+        }
+        return UserDto.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .isEmailVerified(user.isEmailVerified())
+                .token(token)
+                .userType(user.getUserType() != null ? user.getUserType().getType() : "Normal User")
+                .status(user.getStatus())
                 .build();
     }
 
@@ -194,5 +235,40 @@ public class UserService {
 
         validReset.setUsed(true);
         passwordResetRepository.save(validReset);
+    }
+
+    public List<UserDto> getAllUsers() {
+        return userRepository.findAll().stream().map(user -> UserDto.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .isEmailVerified(user.isEmailVerified())
+                .userType(user.getUserType() != null ? user.getUserType().getType() : "Unknown")
+                .status(user.getStatus())
+                .build()).collect(Collectors.toList());
+    }
+
+    @Transactional
+    public UserDto updateUserStatus(Long userId, String status) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        
+        if (user.getUserType() != null && "Super Admin".equalsIgnoreCase(user.getUserType().getType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot change the status of a Super Admin.");
+        }
+        
+        if (!"Active".equalsIgnoreCase(status) && !"Inactive".equalsIgnoreCase(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status");
+        }
+        
+        user.setStatus(status);
+        userRepository.save(user);
+        
+        return UserDto.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .isEmailVerified(user.isEmailVerified())
+                .userType(user.getUserType() != null ? user.getUserType().getType() : "Unknown")
+                .status(user.getStatus())
+                .build();
     }
 }
