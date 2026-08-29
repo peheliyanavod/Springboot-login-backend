@@ -110,6 +110,12 @@ public class UserService {
                 .build();
         sessionRepository.save(session);
 
+        String emailContent = "<h2>Registration Successful!</h2>"
+                + "<p>Welcome to our platform! Your account has been successfully created.</p>"
+                + "<p>You can now log in using your email address.</p>";
+
+        emailService.sendEmail(email, "Registration Successful!", emailContent);
+
         return UserDto.builder()
                 .id(savedUser.getId())
                 .email(savedUser.getEmail())
