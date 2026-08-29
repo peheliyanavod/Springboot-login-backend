@@ -2,6 +2,9 @@ package com.dhanuka.backend.services;
 
 import com.dhanuka.backend.entities.SystemLog;
 import com.dhanuka.backend.entities.User;
+import com.dhanuka.backend.dtos.SystemLogDto;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import com.dhanuka.backend.repositories.SystemLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,5 +29,16 @@ public class SystemLogService {
                 .build();
                 
         systemLogRepository.save(log);
+    }
+
+    public Page<SystemLogDto> getAllLogs(String userName, String ipAddress, String dateFilter, String logMessage, Pageable pageable) {
+        return systemLogRepository.searchLogs(userName, ipAddress, dateFilter, logMessage, pageable)
+                .map(log -> SystemLogDto.builder()
+                        .id(log.getId())
+                        .userName(log.getUser().getName())
+                        .ipAddress(log.getIpAddress())
+                        .dateTime(log.getDateTime())
+                        .log(log.getLog())
+                        .build());
     }
 }
