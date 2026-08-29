@@ -35,4 +35,16 @@ public class AuthController {
         UserDto createdUser = userService.register(signUpDto, ipAddress, userAgent);
         return ResponseEntity.created(URI.create("/users/" + createdUser.getId())).body(createdUser);
     }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<String> forgotPassword(@RequestBody com.dhanuka.backend.dtos.ForgotPasswordDto forgotPasswordDto) {
+        userService.requestPasswordReset(forgotPasswordDto.getEmail());
+        return ResponseEntity.ok("If the email exists, a password reset link has been sent.");
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(@RequestBody com.dhanuka.backend.dtos.ResetPasswordDto resetPasswordDto) {
+        userService.resetPassword(resetPasswordDto.getToken(), resetPasswordDto.getEmail(), resetPasswordDto.getNewPassword());
+        return ResponseEntity.ok("Password has been successfully reset.");
+    }
 }
