@@ -59,7 +59,17 @@ public class JwtService {
                 .compact();
     }
 
-
+    public String generateMfaToken(UserDetails userDetails) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("mfa_pending", true);
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(userDetails.getUsername())
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + 300000)) // 5 minutes
+                .signWith(getSignInKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
         final String username = extractUsername(token);

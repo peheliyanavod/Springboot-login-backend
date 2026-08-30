@@ -32,12 +32,25 @@ public class User implements UserDetails {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "password_hash", nullable = false)
+    @Column(name = "password_hash")
     private String passwordHash;
+
+    @Column(name = "auth_provider")
+    private String authProvider;
+
+    @Column(name = "provider_id")
+    private String providerId;
 
     @Column(name = "is_email_verified", nullable = false)
     @Builder.Default
     private boolean isEmailVerified = false;
+
+    @Column(name = "mfa_secret")
+    private String mfaSecret;
+
+    @Column(name = "is_mfa_enabled", nullable = false)
+    @Builder.Default
+    private boolean isMfaEnabled = false;
 
     @ManyToOne
     @JoinColumn(name = "user_type", nullable = false)

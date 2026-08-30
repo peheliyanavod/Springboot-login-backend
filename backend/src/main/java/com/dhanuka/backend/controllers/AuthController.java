@@ -55,9 +55,6 @@ public class AuthController {
         String userAgent = request.getHeader("User-Agent");
         UserDto createdUser = userService.register(signUpDto, ipAddress, userAgent);
 
-        setRefreshTokenCookie(response, createdUser.getRefreshToken());
-        createdUser.setRefreshToken(null);
-
         return ResponseEntity.created(URI.create("/users/" + createdUser.getId())).body(createdUser);
     }
 
@@ -124,5 +121,24 @@ public class AuthController {
         String ipAddress = request.getRemoteAddr();
         userService.resetPassword(resetPasswordDto.getToken(), resetPasswordDto.getEmail(), resetPasswordDto.getNewPassword(), ipAddress);
         return ResponseEntity.ok("Password has been successfully reset.");
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<String> verifyEmail(@org.springframework.web.bind.annotation.RequestParam String token) {
+        userService.verifyEmail(token);
+        return ResponseEntity.ok("Email verified successfully");
+    }
+
+    @PostMapping("/verify-mfa")
+    public ResponseEntity<UserDto> verifyMfa(@org.springframework.web.bind.annotation.RequestParam String mfaToken, @org.springframework.web.bind.annotation.RequestParam int code, HttpServletRequest request, HttpServletResponse response) {
+        String ipAddress = request.getRemoteAddr();
+        String userAgent = request.getHeader("User-Agent");
+
+        UserDto userDto = userService.verifyMfa(mfaToken, code, ipAddress, userAgent);
+
+        setRefreshTokenCookie(response, userDto.getRefreshToken());
+        userDto.setRefreshToken(null);
+
+        return ResponseEntity.ok(userDto);
     }
 }

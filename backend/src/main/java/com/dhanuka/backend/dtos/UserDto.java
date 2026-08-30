@@ -19,4 +19,6 @@ public class UserDto {
     private String refreshToken;
     private String userType;
     private String status;
+    private boolean mfaRequired;
+    private String mfaToken;
 }

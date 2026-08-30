@@ -9,7 +9,10 @@ import com.dhanuka.backend.repositories.PasswordResetRepository;
 import com.dhanuka.backend.repositories.SessionRepository;
 import com.dhanuka.backend.repositories.UserRepository;
 import com.dhanuka.backend.repositories.UserTypeRepository;
+import com.dhanuka.backend.repositories.EmailVerificationTokenRepository;
 import com.dhanuka.backend.entities.UserType;
+import com.dhanuka.backend.entities.EmailVerificationToken;
+import com.warrenstrange.googleauth.GoogleAuthenticator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,6 +31,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
     private final PasswordResetRepository passwordResetRepository;
+    private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final EmailService emailService;
     private final UserTypeRepository userTypeRepository;
     private final SystemLogService systemLogService;
@@ -50,6 +54,10 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Your account is inactive. Please contact support.");
         }
 
+        if (!user.isEmailVerified()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Please verify your email address to log in.");
+        }
+
         if (user.getLockTime() != null && user.getLockTime().isAfter(LocalDateTime.now())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Account is temporarily locked. Try again later.");
         }
@@ -66,6 +74,14 @@ public class UserService {
         user.setFailedAttempts(0);
         user.setLockTime(null);
         userRepository.save(user);
+
+        if (user.isMfaEnabled()) {
+            String mfaToken = jwtService.generateMfaToken(user);
+            return UserDto.builder()
+                    .mfaRequired(true)
+                    .mfaToken(mfaToken)
+                    .build();
+        }
 
         String jwtToken = jwtService.generateToken(user);
         String refreshToken = jwtService.generateRefreshToken(user);
@@ -144,23 +160,21 @@ public class UserService {
 
         User savedUser = userRepository.save(user);
 
-        String jwtToken = jwtService.generateToken(savedUser);
-        String refreshToken = jwtService.generateRefreshToken(savedUser);
-        Session session = Session.builder()
+        String token = UUID.randomUUID().toString();
+        EmailVerificationToken verificationToken = EmailVerificationToken.builder()
+                .token(token)
                 .user(savedUser)
-                .refreshToken(refreshToken)
-                .ipAddress(ipAddress)
-                .userAgent(userAgent)
-                .expiredAt(LocalDateTime.now().plusDays(7))
-                .isRevoked(false)
+                .expiryDate(LocalDateTime.now().plusHours(24))
                 .build();
-        sessionRepository.save(session);
+        emailVerificationTokenRepository.save(verificationToken);
 
-        String emailContent = "<h2>Registration Successful!</h2>"
-                + "<p>Welcome to our platform! Your account has been successfully created.</p>"
-                + "<p>You can now log in using your email address.</p>";
+        String verificationLink = frontendUrl + "/verify-email?token=" + token;
+        String emailContent = "<h2>Welcome to our platform!</h2>"
+                + "<p>Please verify your email address to activate your account.</p>"
+                + "<p><a href=\"" + verificationLink + "\">Click here to verify your email</a></p>"
+                + "<p>If you didn't request this, you can ignore this email.</p>";
 
-        emailService.sendEmail(email, "Registration Successful!", emailContent);
+        emailService.sendEmail(email, "Verify Your Email Address", emailContent);
 
         systemLogService.saveLog(user, ipAddress, "User registered successfully");
 
@@ -169,10 +183,70 @@ public class UserService {
                 .email(savedUser.getEmail())
                 .name(savedUser.getName())
                 .isEmailVerified(savedUser.isEmailVerified())
-                .token(jwtToken)
-                .refreshToken(refreshToken)
                 .userType(savedUser.getUserType().getType())
                 .status(savedUser.getStatus())
+                .build();
+    }
+
+    @Transactional
+    public void verifyEmail(String token) {
+        EmailVerificationToken verificationToken = emailVerificationTokenRepository.findByToken(token)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired token"));
+
+        if (verificationToken.getExpiryDate().isBefore(LocalDateTime.now())) {
+            emailVerificationTokenRepository.delete(verificationToken);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token expired. Please register again or request a new token.");
+        }
+
+        User user = verificationToken.getUser();
+        user.setEmailVerified(true);
+        userRepository.save(user);
+
+        emailVerificationTokenRepository.delete(verificationToken);
+    }
+
+    @Transactional
+    public UserDto verifyMfa(String mfaToken, int code, String ipAddress, String userAgent) {
+        Boolean isMfaPending = jwtService.extractClaim(mfaToken, claims -> claims.get("mfa_pending", Boolean.class));
+        if (isMfaPending == null || !isMfaPending) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid MFA token");
+        }
+
+        String email = jwtService.extractUsername(mfaToken);
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
+
+        GoogleAuthenticator gAuth = new GoogleAuthenticator();
+        boolean isCodeValid = gAuth.authorize(user.getMfaSecret(), code);
+
+        if (!isCodeValid) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid MFA code");
+        }
+
+        String jwtToken = jwtService.generateToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
+
+        Session session = Session.builder()
+                .user(user)
+                .refreshToken(refreshToken)
+                .ipAddress(ipAddress)
+                .userAgent(userAgent)
+                .expiredAt(LocalDateTime.now().plusDays(7))
+                .isRevoked(false)
+                .build();
+        sessionRepository.save(session);
+
+        systemLogService.saveLog(user, ipAddress, "User verified MFA and logged in successfully");
+
+        return UserDto.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .name(user.getName())
+                .isEmailVerified(user.isEmailVerified())
+                .token(jwtToken)
+                .refreshToken(refreshToken)
+                .userType(user.getUserType() != null ? user.getUserType().getType() : "Normal User")
+                .status(user.getStatus())
                 .build();
     }
 
