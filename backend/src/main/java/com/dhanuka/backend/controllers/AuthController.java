@@ -36,7 +36,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<UserDto> login(@RequestBody CredentialsDto credentialsDto, HttpServletRequest request) {
+    public ResponseEntity<UserDto> login(@Valid @RequestBody CredentialsDto credentialsDto, HttpServletRequest request) {
         String ipAddress = request.getRemoteAddr();
         String userAgent = request.getHeader("User-Agent");
         UserDto userDto = userService.login(credentialsDto, ipAddress, userAgent);
@@ -44,21 +44,31 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<UserDto> register(@RequestBody SignUpDto signUpDto, HttpServletRequest request) {
+    public ResponseEntity<UserDto> register(@Valid @RequestBody SignUpDto signUpDto, HttpServletRequest request) {
         String ipAddress = request.getRemoteAddr();
         String userAgent = request.getHeader("User-Agent");
         UserDto createdUser = userService.register(signUpDto, ipAddress, userAgent);
         return ResponseEntity.created(URI.create("/users/" + createdUser.getId())).body(createdUser);
     }
 
+    @PostMapping("/logout")
+    public ResponseEntity<String> logout(HttpServletRequest request) {
+        String token = request.getHeader("Authorization");
+        if (token != null && token.startsWith("Bearer ")) {
+            token = token.substring(7);
+            userService.logout(token);
+        }
+        return ResponseEntity.ok("Logged out successfully");
+    }
+
     @PostMapping("/forgot-password")
-    public ResponseEntity<String> forgotPassword(@RequestBody com.dhanuka.backend.dtos.ForgotPasswordDto forgotPasswordDto) {
+    public ResponseEntity<String> forgotPassword(@Valid @RequestBody com.dhanuka.backend.dtos.ForgotPasswordDto forgotPasswordDto) {
         userService.requestPasswordReset(forgotPasswordDto.getEmail());
         return ResponseEntity.ok("If the email exists, a password reset link has been sent.");
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<String> resetPassword(@RequestBody com.dhanuka.backend.dtos.ResetPasswordDto resetPasswordDto, HttpServletRequest request) {
+    public ResponseEntity<String> resetPassword(@Valid @RequestBody com.dhanuka.backend.dtos.ResetPasswordDto resetPasswordDto, HttpServletRequest request) {
         String ipAddress = request.getRemoteAddr();
         userService.resetPassword(resetPasswordDto.getToken(), resetPasswordDto.getEmail(), resetPasswordDto.getNewPassword(), ipAddress);
         return ResponseEntity.ok("Password has been successfully reset.");

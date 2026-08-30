@@ -31,6 +31,7 @@ public class UserService {
     private final EmailService emailService;
     private final UserTypeRepository userTypeRepository;
     private final SystemLogService systemLogService;
+    private final com.dhanuka.backend.config.JwtService jwtService;
 
     @org.springframework.beans.factory.annotation.Value("${app.frontend.url:http://localhost:4200}")
     private String frontendUrl;
@@ -53,10 +54,10 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }
 
-        String refreshToken = UUID.randomUUID().toString();
+        String jwtToken = jwtService.generateToken(user);
         Session session = Session.builder()
                 .user(user)
-                .refreshToken(refreshToken)
+                .refreshToken(jwtToken)
                 .ipAddress(ipAddress)
                 .userAgent(userAgent)
                 .expiredAt(LocalDateTime.now().plusDays(7))
@@ -71,7 +72,7 @@ public class UserService {
                 .email(user.getEmail())
                 .name(user.getName())
                 .isEmailVerified(user.isEmailVerified())
-                .token(refreshToken)
+                .token(jwtToken)
                 .userType(user.getUserType() != null ? user.getUserType().getType() : "Normal User")
                 .status(user.getStatus())
                 .build();
@@ -128,10 +129,10 @@ public class UserService {
 
         User savedUser = userRepository.save(user);
 
-        String refreshToken = UUID.randomUUID().toString();
+        String jwtToken = jwtService.generateToken(savedUser);
         Session session = Session.builder()
                 .user(savedUser)
-                .refreshToken(refreshToken)
+                .refreshToken(jwtToken)
                 .ipAddress(ipAddress)
                 .userAgent(userAgent)
                 .expiredAt(LocalDateTime.now().plusDays(7))
@@ -152,7 +153,7 @@ public class UserService {
                 .email(savedUser.getEmail())
                 .name(savedUser.getName())
                 .isEmailVerified(savedUser.isEmailVerified())
-                .token(refreshToken)
+                .token(jwtToken)
                 .userType(savedUser.getUserType().getType())
                 .status(savedUser.getStatus())
                 .build();
@@ -196,11 +197,6 @@ public class UserService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User with this email does not exist"));
 
         String token = UUID.randomUUID().toString();
-        // Here we just store the token directly or a hash. Since this is an example, we can store it directly.
-        // It's better to store a hash, but for simplicity of reset, we'll store the token itself in tokenHash for now.
-        // If we store hash, we need the raw token in email. Let's just store raw token for ease, or hash it.
-        // The entity field is named `tokenHash` though. So let's just store the raw token in `tokenHash` field for simplicity.
-        // Wait, standard practice is to hash it.
         String hashedToken = org.mindrot.jbcrypt.BCrypt.hashpw(token, org.mindrot.jbcrypt.BCrypt.gensalt());
 
         com.dhanuka.backend.entities.PasswordReset reset = com.dhanuka.backend.entities.PasswordReset.builder()
@@ -210,9 +206,9 @@ public class UserService {
                 .isUsed(false)
                 .build();
         
-        passwordResetRepository.save(reset);
+        com.dhanuka.backend.entities.PasswordReset savedReset = passwordResetRepository.save(reset);
 
-        String resetLink = frontendUrl + "/?token=" + token + "&email=" + email;
+        String resetLink = frontendUrl + "/?token=" + savedReset.getId() + "_" + token + "&email=" + email;
         String emailContent = "<h2>Password Reset</h2>"
                 + "<p>You requested a password reset. Click the link below to set a new password:</p>"
                 + "<a href=\"" + resetLink + "\">Reset Password</a>"
@@ -226,18 +222,27 @@ public class UserService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         
-        java.util.List<com.dhanuka.backend.entities.PasswordReset> resets = passwordResetRepository.findByUserAndIsUsedFalse(user);
-        com.dhanuka.backend.entities.PasswordReset validReset = null;
-
-        for (com.dhanuka.backend.entities.PasswordReset reset : resets) {
-            if (reset.getExpiredAt().isAfter(LocalDateTime.now()) && 
-                org.mindrot.jbcrypt.BCrypt.checkpw(token, reset.getTokenHash())) {
-                validReset = reset;
-                break;
-            }
+        String[] tokenParts = token.split("_");
+        if (tokenParts.length != 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid token format");
         }
+        
+        Integer resetId;
+        try {
+            resetId = Integer.parseInt(tokenParts[0]);
+        } catch (NumberFormatException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid token format");
+        }
+        String rawToken = tokenParts[1];
 
-        if (validReset == null) {
+        com.dhanuka.backend.entities.PasswordReset validReset = passwordResetRepository.findById(resetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired reset token"));
+
+        if (!validReset.getUser().getEmail().equals(user.getEmail()) ||
+            validReset.isUsed() ||
+            validReset.getExpiredAt().isBefore(LocalDateTime.now()) ||
+            !org.mindrot.jbcrypt.BCrypt.checkpw(rawToken, validReset.getTokenHash())) {
+            
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired reset token");
         }
 
@@ -252,6 +257,14 @@ public class UserService {
         passwordResetRepository.save(validReset);
 
         systemLogService.saveLog(user, ipAddress, "Password reset successful");
+    }
+
+    @Transactional
+    public void logout(String token) {
+        sessionRepository.findByRefreshToken(token).ifPresent(session -> {
+            session.setRevoked(true);
+            sessionRepository.save(session);
+        });
     }
 
     public List<UserDto> getAllUsers() {
