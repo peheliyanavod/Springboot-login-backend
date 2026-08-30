@@ -50,14 +50,28 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Your account is inactive. Please contact support.");
         }
 
+        if (user.getLockTime() != null && user.getLockTime().isAfter(LocalDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Account is temporarily locked. Try again later.");
+        }
+
         if (!org.mindrot.jbcrypt.BCrypt.checkpw(credentialsDto.getPassword(), user.getPasswordHash())) {
+            user.setFailedAttempts(user.getFailedAttempts() + 1);
+            if (user.getFailedAttempts() >= 5) {
+                user.setLockTime(LocalDateTime.now().plusMinutes(15));
+            }
+            userRepository.save(user);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }
 
+        user.setFailedAttempts(0);
+        user.setLockTime(null);
+        userRepository.save(user);
+
         String jwtToken = jwtService.generateToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
         Session session = Session.builder()
                 .user(user)
-                .refreshToken(jwtToken)
+                .refreshToken(refreshToken)
                 .ipAddress(ipAddress)
                 .userAgent(userAgent)
                 .expiredAt(LocalDateTime.now().plusDays(7))
@@ -73,6 +87,7 @@ public class UserService {
                 .name(user.getName())
                 .isEmailVerified(user.isEmailVerified())
                 .token(jwtToken)
+                .refreshToken(refreshToken)
                 .userType(user.getUserType() != null ? user.getUserType().getType() : "Normal User")
                 .status(user.getStatus())
                 .build();
@@ -130,9 +145,10 @@ public class UserService {
         User savedUser = userRepository.save(user);
 
         String jwtToken = jwtService.generateToken(savedUser);
+        String refreshToken = jwtService.generateRefreshToken(savedUser);
         Session session = Session.builder()
                 .user(savedUser)
-                .refreshToken(jwtToken)
+                .refreshToken(refreshToken)
                 .ipAddress(ipAddress)
                 .userAgent(userAgent)
                 .expiredAt(LocalDateTime.now().plusDays(7))
@@ -154,6 +170,7 @@ public class UserService {
                 .name(savedUser.getName())
                 .isEmailVerified(savedUser.isEmailVerified())
                 .token(jwtToken)
+                .refreshToken(refreshToken)
                 .userType(savedUser.getUserType().getType())
                 .status(savedUser.getStatus())
                 .build();
@@ -257,6 +274,52 @@ public class UserService {
         passwordResetRepository.save(validReset);
 
         systemLogService.saveLog(user, ipAddress, "Password reset successful");
+    }
+
+    @Transactional
+    public UserDto refreshAccessToken(String refreshToken, String ipAddress, String userAgent) {
+        Session session = sessionRepository.findByRefreshToken(refreshToken)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid session"));
+
+        if (session.isRevoked() || session.getExpiredAt().isBefore(LocalDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Session expired or revoked");
+        }
+
+        User user = session.getUser();
+        if ("Inactive".equalsIgnoreCase(user.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Your account is inactive.");
+        }
+        
+        if (user.getLockTime() != null && user.getLockTime().isAfter(LocalDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Account is temporarily locked. Try again later.");
+        }
+
+        String newJwtToken = jwtService.generateToken(user);
+        String newRefreshToken = jwtService.generateRefreshToken(user);
+
+        session.setRevoked(true); // Revoke the old session
+        sessionRepository.save(session);
+
+        Session newSession = Session.builder()
+                .user(user)
+                .refreshToken(newRefreshToken)
+                .ipAddress(ipAddress)
+                .userAgent(userAgent)
+                .expiredAt(LocalDateTime.now().plusDays(7))
+                .isRevoked(false)
+                .build();
+        sessionRepository.save(newSession);
+
+        return UserDto.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .name(user.getName())
+                .isEmailVerified(user.isEmailVerified())
+                .token(newJwtToken)
+                .refreshToken(newRefreshToken)
+                .userType(user.getUserType() != null ? user.getUserType().getType() : "Normal User")
+                .status(user.getStatus())
+                .build();
     }
 
     @Transactional

@@ -47,6 +47,13 @@ public class User implements UserDetails {
     @Builder.Default
     private String status = "Active";
 
+    @Column(name = "failed_attempts")
+    @Builder.Default
+    private Integer failedAttempts = 0;
+
+    @Column(name = "lock_time")
+    private LocalDateTime lockTime;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private LocalDateTime createdAt;
 

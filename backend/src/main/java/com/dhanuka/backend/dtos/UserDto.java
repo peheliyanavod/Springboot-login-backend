@@ -16,6 +16,7 @@ public class UserDto {
     private String name;
     private boolean isEmailVerified;
     private String token;
+    private String refreshToken;
     private String userType;
     private String status;
 }

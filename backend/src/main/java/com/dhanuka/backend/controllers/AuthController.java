@@ -4,7 +4,9 @@ import com.dhanuka.backend.dtos.CredentialsDto;
 import com.dhanuka.backend.dtos.SignUpDto;
 import com.dhanuka.backend.dtos.UserDto;
 import com.dhanuka.backend.services.UserService;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -36,29 +38,79 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<UserDto> login(@Valid @RequestBody CredentialsDto credentialsDto, HttpServletRequest request) {
+    public ResponseEntity<UserDto> login(@Valid @RequestBody CredentialsDto credentialsDto, HttpServletRequest request, HttpServletResponse response) {
         String ipAddress = request.getRemoteAddr();
         String userAgent = request.getHeader("User-Agent");
         UserDto userDto = userService.login(credentialsDto, ipAddress, userAgent);
+
+        setRefreshTokenCookie(response, userDto.getRefreshToken());
+        userDto.setRefreshToken(null);
+
         return ResponseEntity.ok(userDto);
     }
 
     @PostMapping("/register")
-    public ResponseEntity<UserDto> register(@Valid @RequestBody SignUpDto signUpDto, HttpServletRequest request) {
+    public ResponseEntity<UserDto> register(@Valid @RequestBody SignUpDto signUpDto, HttpServletRequest request, HttpServletResponse response) {
         String ipAddress = request.getRemoteAddr();
         String userAgent = request.getHeader("User-Agent");
         UserDto createdUser = userService.register(signUpDto, ipAddress, userAgent);
+
+        setRefreshTokenCookie(response, createdUser.getRefreshToken());
+        createdUser.setRefreshToken(null);
+
         return ResponseEntity.created(URI.create("/users/" + createdUser.getId())).body(createdUser);
     }
 
+    @PostMapping("/refresh")
+    public ResponseEntity<UserDto> refresh(HttpServletRequest request, HttpServletResponse response) {
+        String refreshToken = extractRefreshToken(request);
+        if (refreshToken == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token missing");
+        }
+
+        String ipAddress = request.getRemoteAddr();
+        String userAgent = request.getHeader("User-Agent");
+
+        UserDto userDto = userService.refreshAccessToken(refreshToken, ipAddress, userAgent);
+
+        setRefreshTokenCookie(response, userDto.getRefreshToken());
+        userDto.setRefreshToken(null);
+
+        return ResponseEntity.ok(userDto);
+    }
+
     @PostMapping("/logout")
-    public ResponseEntity<String> logout(HttpServletRequest request) {
-        String token = request.getHeader("Authorization");
-        if (token != null && token.startsWith("Bearer ")) {
-            token = token.substring(7);
-            userService.logout(token);
+    public ResponseEntity<String> logout(HttpServletRequest request, HttpServletResponse response) {
+        String refreshToken = extractRefreshToken(request);
+        if (refreshToken != null) {
+            userService.logout(refreshToken);
+            
+            Cookie cookie = new Cookie("refresh_token", "");
+            cookie.setHttpOnly(true);
+            cookie.setPath("/");
+            cookie.setMaxAge(0);
+            response.addCookie(cookie);
         }
         return ResponseEntity.ok("Logged out successfully");
+    }
+
+    private void setRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
+        Cookie cookie = new Cookie("refresh_token", refreshToken);
+        cookie.setHttpOnly(true);
+        cookie.setPath("/");
+        cookie.setMaxAge(7 * 24 * 60 * 60); // 7 days
+        response.addCookie(cookie);
+    }
+
+    private String extractRefreshToken(HttpServletRequest request) {
+        if (request.getCookies() != null) {
+            for (Cookie c : request.getCookies()) {
+                if ("refresh_token".equals(c.getName())) {
+                    return c.getValue();
+                }
+            }
+        }
+        return null;
     }
 
     @PostMapping("/forgot-password")
