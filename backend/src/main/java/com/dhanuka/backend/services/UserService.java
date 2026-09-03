@@ -258,6 +258,8 @@ public class UserService {
                 .email(user.getEmail())
                 .name(user.getName())
                 .isEmailVerified(user.isEmailVerified())
+                .userType(user.getUserType() != null ? user.getUserType().getType() : "Normal User")
+                .status(user.getStatus())
                 .build();
     }
 

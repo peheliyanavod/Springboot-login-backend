@@ -27,13 +27,8 @@ public class AuthController {
 
     @GetMapping("/me")
     public ResponseEntity<UserDto> getCurrentUser(HttpServletRequest request) {
-        String token = request.getHeader("Authorization");
-        if (token != null && token.startsWith("Bearer ")) {
-            token = token.substring(7);
-        } else {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing token");
-        }
-        UserDto userDto = userService.getUserByToken(token);
+        String email = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        UserDto userDto = userService.findByEmail(email);
         return ResponseEntity.ok(userDto);
     }
 
